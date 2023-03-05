@@ -30,13 +30,13 @@ type PullConfiguration struct {
 	Enable    bool   `yaml:"enable"`
 	GitBranch string `yaml:"git-branch"`
 	Filter    string `yaml:"filter"`
+	IgnoreTag string `yaml:"ignore-tag"`
 }
 
 type PushConfiguration struct {
 	PullConfiguration `yaml:",inline"`
 	TagPattern        string `yaml:"tag-pattern"`
 	PushTags          bool   `yaml:"push-tags"`
-	IgnoreTag         string `yaml:"ignore-tag"`
 }
 
 // Creates a new Synchronizer instance.
@@ -139,25 +139,9 @@ func (s *Synchronization) pushDashboards(dryRun bool) error {
 			return err
 		}
 
-	BOARDS:
 		for _, board := range resultBoards {
 			// get dashboard Object and Properties
 			dashboard, boardProperties := s.grafanaApi.GetDashboardObjectByUID(board.UID)
-
-			// Skip dashboards with ignore tag
-			if configuration.IgnoreTag != "" {
-				for _, dashboardTag := range dashboard.Tags {
-					if dashboardTag == configuration.IgnoreTag {
-						folderAndTitle := boardProperties.FolderTitle + "/" + dashboard.Title
-						log.WithFields(log.Fields{
-							"dashboard-path": folderAndTitle,
-							"tags":           strings.Join(dashboard.Tags, ","),
-							"ignore-tag":     configuration.IgnoreTag,
-						}).Info("Skipping export because dashboard has a tag that's configured to be ignored.")
-						continue BOARDS
-					}
-				}
-			}
 
 			// synchronize only dashboards matching the filter
 			if regexFilter != nil {
@@ -167,7 +151,7 @@ func (s *Synchronization) pushDashboards(dryRun bool) error {
 						"dashboard-path": folderAndTitle,
 						"filter":         configuration.Filter,
 					}).Info("Skipping export because dashboard does not match the specified filter pattern.")
-					continue BOARDS
+					continue
 				}
 			}
 
@@ -283,6 +267,7 @@ func (s *Synchronization) pullDashboards(dryRun bool) error {
 		}
 
 		// for each dashboard within folder
+	BOARDS:
 		for _, dashboardJson := range dashboardFiles {
 			// get dashboards from Git and Grafana for comparison
 			dashboard := DashboardWithCustomFields{}
@@ -307,7 +292,22 @@ func (s *Synchronization) pullDashboards(dryRun bool) error {
 			}
 
 			//gitDashboardExtended := getDashboardObjectFromRawDashboard(gitRawDashboard)
-			grafanaDashboard, _ := s.grafanaApi.GetDashboardObjectByUID(dashboard.UID)
+			grafanaDashboard, boardProperties := s.grafanaApi.GetDashboardObjectByUID(dashboard.UID)
+
+			// Skip dashboards with ignore tag
+			if configuration.IgnoreTag != "" {
+				for _, dashboardTag := range grafanaDashboard.Tags {
+					if dashboardTag == configuration.IgnoreTag {
+						folderAndTitle := boardProperties.FolderTitle + "/" + dashboard.Title
+						log.WithFields(log.Fields{
+							"dashboard-path": folderAndTitle,
+							"tags":           strings.Join(dashboard.Tags, ","),
+							"ignore-tag":     configuration.IgnoreTag,
+						}).Info("Skipping export because dashboard has a tag that's configured to be ignored.")
+						continue BOARDS
+					}
+				}
+			}
 
 			// extract the custom tags from the dashboard model
 			syncOrigin := dashboard.SyncOrigin
