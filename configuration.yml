@@ -28,6 +28,7 @@
     tag-pattern: "sync"
     # whether the sync-tag should be kept during exporting
     push-tags: true
+    ignore-tag: "nosync"
 
   # pull (import) related configurations  
   pull-configuration:
